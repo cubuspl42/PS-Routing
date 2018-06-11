@@ -114,11 +114,25 @@ std::string to_string(in_addr addr) {
   return std::string{buf};
 }
 
+in_addr pton(const char *src) {
+  in_addr rv;
+  if(inet_pton(AF_INET, src, &rv) != 1)
+    throw std::runtime_error("inet_pton");
+  return rv;
+}
+
 int main(int argc, char const *argv[]) {
   NetlinkRouteSocket nrs;
-  auto routes = nrs.getRoutes();
-  for (auto r : routes) {
-    std::cout << to_string(r.dst) << "/" << (int)r.dst_len;
-    std::cout << " via " << to_string(r.gateway) << std::endl;
-  }
+  // auto routes = nrs.getRoutes();
+  // for (auto r : routes) {
+  //   std::cout << to_string(r.dst) << "/" << (int)r.dst_len;
+  //   std::cout << " via " << to_string(r.gateway) << std::endl;
+  // }
+  Entry entry;
+  entry.dst = pton("1.1.8.0");
+  entry.dst_len = 24;
+  entry.gateway = pton("192.168.12.2");
+  // entry.oif = 4;
+  std::vector<Entry> v{entry};
+  nrs.setRoutes(v);
 }
