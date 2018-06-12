@@ -2,11 +2,20 @@
 #include <netinet/ip.h>
 
 #include <vector>
+#include <thread>
+
+struct EnabledInterface {
+  in_addr addr;
+  uint8_t addr_len;
+  int oif;
+};
 
 struct Entry {
   in_addr dst;
   uint8_t dst_len;
   in_addr gateway;
+  int oif;
+  int metric;
 };
 
 struct RtMessage {
@@ -25,18 +34,27 @@ class NetlinkRouteSocket {
 public:
   std::vector<RtMessage> getRoutes();
   std::vector<Entry> getRoutes_();
-  void setRoutes(std::vector<Entry> &routes);
+  void setRoute(Entry entry);
 };
 
 class Service {
 public:
-  Service();
-  void run();
+  Service(std::vector<EnabledInterface> enabledInterfaces,
+          std::vector<Entry> directRoutes);
+  void join();
 
 private:
+  int findInterfaceByIp(struct in_addr addr);
   void broadcastRoute(Entry entry);
   void broadcastRoutingTable();
+  void recvLoop();
+  void broadcastLoop();
+
+  std::thread recvThread;
+  std::thread broadcastThread;
 
   int sfd;
-  int nfd;
+
+  std::vector<EnabledInterface> enabledInterfaces;
+  std::vector<Entry> routingTable;
 };

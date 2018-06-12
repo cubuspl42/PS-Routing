@@ -116,23 +116,40 @@ std::string to_string(in_addr addr) {
 
 in_addr pton(const char *src) {
   in_addr rv;
-  if(inet_pton(AF_INET, src, &rv) != 1)
+  if (inet_pton(AF_INET, src, &rv) != 1)
     throw std::runtime_error("inet_pton");
   return rv;
 }
 
 int main(int argc, char const *argv[]) {
-  NetlinkRouteSocket nrs;
+  // NetlinkRouteSocket nrs;
   // auto routes = nrs.getRoutes();
   // for (auto r : routes) {
   //   std::cout << to_string(r.dst) << "/" << (int)r.dst_len;
   //   std::cout << " via " << to_string(r.gateway) << std::endl;
   // }
-  Entry entry;
-  entry.dst = pton("1.1.8.0");
-  entry.dst_len = 24;
-  entry.gateway = pton("192.168.12.2");
+
+  // Entry entry;
+  // entry.dst = pton("1.1.8.0");
+  // entry.dst_len = 24;
+  // entry.gateway = pton("192.168.12.2");
   // entry.oif = 4;
-  std::vector<Entry> v{entry};
-  nrs.setRoutes(v);
+  // nrs.setRoute(entry);
+
+  EnabledInterface iface;
+  iface.addr = pton("192.168.12.0");
+  iface.addr_len = 24;
+  iface.oif = 4;
+
+  auto enabledInterfaces = std::vector<EnabledInterface>{iface};
+
+  Entry entry0;
+  entry0.dst = pton("10.1.0.0");
+  entry0.dst_len = 24;
+  entry0.oif = 5;
+
+  auto directRoutes = std::vector<Entry>{entry0};
+
+  Service service{enabledInterfaces, directRoutes};
+  service.join();
 }

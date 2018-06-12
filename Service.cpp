@@ -24,8 +24,8 @@ bool operator==(in_addr a, in_addr b) { return a.s_addr == b.s_addr; }
 bool operator!=(in_addr a, in_addr b) { return !(a == b); }
 
 struct Message {
-  struct nlmsghdr header;
-  struct rtmsg body;
+  nlmsghdr header;
+  rtmsg body;
 };
 
 struct RtError {
@@ -107,7 +107,6 @@ static std::vector<Entry> handle_response(int sfd) {
   while (true) {
     char buf[8192] = {};
     int len = recv(sfd, buf, sizeof buf, 0);
-    std::cout << "len: " << len << std::endl;
 
     for (nlmsghdr *nh = (nlmsghdr *)buf; NLMSG_OK(nh, len);
          nh = NLMSG_NEXT(nh, len)) {
@@ -298,16 +297,14 @@ std::vector<RtMessage> NetlinkRouteSocket::getRoutes() {
   return send_rt_request(msg);
 }
 
-void NetlinkRouteSocket::setRoutes(std::vector<Entry> &routes) {
-  Entry entry = routes.front();
-
+void NetlinkRouteSocket::setRoute(Entry entry) {
   RtMessage msg;
   msg.msg_type = RTM_NEWROUTE;
   msg.flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
   msg.dst = entry.dst;
   msg.dst_len = entry.dst_len;
   msg.gateway = entry.gateway;
-  msg.oif = 4; // FIXME
+  msg.oif = entry.oif;
   msg.protocol = RTPROT_STATIC;
   msg.scope = RT_SCOPE_UNIVERSE;
   msg.type = RTN_UNICAST;
@@ -315,9 +312,16 @@ void NetlinkRouteSocket::setRoutes(std::vector<Entry> &routes) {
   auto rv = send_rt_request(msg);
 }
 
-Service::Service() {
+Service::Service(std::vector<EnabledInterface> enabledInterfaces,
+                 std::vector<Entry> directRoutes) {
   if ((sfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
     throw std::runtime_error("socket [UDP]");
+  }
+
+  int broadcastEnable = 1;
+  if (setsockopt(sfd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable,
+                 sizeof broadcastEnable) != 0) {
+    throw std::runtime_error("setsockopt");
   }
 
   sockaddr_in si_me{};
@@ -328,23 +332,79 @@ Service::Service() {
   if (bind(sfd, (sockaddr *)&si_me, sizeof si_me) == -1) {
     throw std::runtime_error("bind");
   }
+
+  this->enabledInterfaces = enabledInterfaces;
+  this->routingTable = directRoutes;
+
+  this->recvThread = std::thread{[=]() { recvLoop(); }};
+  this->broadcastThread = std::thread{[=]() { broadcastLoop(); }};
 }
 
-void Service::run() {
+void Service::recvLoop() {
+  while (true) {
+    struct sockaddr_in sender {};
+    Entry entry;
+
+    socklen_t sendsize = sizeof sender;
+
+    int len = recvfrom(sfd, &entry, sizeof entry, 0, (struct sockaddr *)&sender,
+                       &sendsize);
+    if (len != sizeof entry) {
+      throw std::runtime_error("recvfrom");
+    }
+
+    entry.oif = findInterfaceByIp(sender.sin_addr);
+
+    NetlinkRouteSocket nls;
+    nls.setRoute(entry);
+  }
+}
+
+static bool isInSubnet(struct in_addr addr, struct in_addr net,
+                       uint8_t net_len) {
+  uint32_t addrh = ntohl(addr.s_addr);
+  uint32_t neth = ntohl(addr.s_addr);
+  int n = (32 - net_len);
+  return (addrh >> n) == (neth >> n);
+}
+
+int Service::findInterfaceByIp(struct in_addr addr) {
+  for (auto iface : enabledInterfaces) {
+    if (isInSubnet(addr, iface.addr, iface.addr_len)) {
+      return iface.oif;
+    }
+  }
+  throw std::runtime_error("no such interface");
+}
+
+void Service::broadcastLoop() {
   while (true) {
     broadcastRoutingTable();
     std::this_thread::sleep_for(30s);
   }
 }
 
-void Service::broadcastRoute(Entry entry) {}
+void Service::broadcastRoute(Entry entry) {
+  struct sockaddr_in addr {};
+  addr.sin_family = AF_INET;
+  addr.sin_port = port;
+  addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+
+  if (sendto(sfd, &entry, sizeof entry, 0, (struct sockaddr *)&addr,
+             sizeof addr) < 0)
+    throw std::runtime_error("sendto");
+}
 
 void Service::broadcastRoutingTable() {
+  std::cerr << "Broadcasting routing table..." << std::endl;
   NetlinkRouteSocket socket;
   auto routes = socket.getRoutes_();
   for (auto entry : routes) {
-    if (entry.dst != in_addr_any) {
-      broadcastRoute(entry);
-    }
+    broadcastRoute(entry);
   }
+}
+
+void Service::join() {
+  recvThread.join();
+  broadcastThread.join();
 }
