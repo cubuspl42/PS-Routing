@@ -25,8 +25,8 @@ struct RtMessage {
   uint8_t dst_len;
   in_addr gateway;
   int oif;
-  uint8_t protocol; /* Routing protocol; see below */
-  uint8_t scope;    /* See below */
+  uint8_t protocol;
+  uint8_t scope;
   uint8_t type;
 };
 

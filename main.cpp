@@ -1,6 +1,9 @@
 #include "Service.h"
 
+#include "nlohmann/json.hpp"
+
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <map>
 
@@ -12,6 +15,8 @@
 #include <sys/socket.h>
 // #include <sys/types.h>
 #include <unistd.h>
+
+using nlohmann::json;
 
 struct Message {
   struct nlmsghdr header;
@@ -108,15 +113,15 @@ int main_(int argc, char const *argv[]) {
   return 0;
 }
 
-std::string to_string(in_addr addr) {
+inline std::string to_string(in_addr addr) {
   char buf[32] = {};
   inet_ntop(AF_INET, &addr, buf, sizeof buf);
   return std::string{buf};
 }
 
-in_addr pton(const char *src) {
+in_addr pton(std::string src) {
   in_addr rv;
-  if (inet_pton(AF_INET, src, &rv) != 1)
+  if (inet_pton(AF_INET, src.c_str(), &rv) != 1)
     throw std::runtime_error("inet_pton");
   return rv;
 }
@@ -136,19 +141,33 @@ int main(int argc, char const *argv[]) {
   // entry.oif = 4;
   // nrs.setRoute(entry);
 
-  EnabledInterface iface;
-  iface.addr = pton("192.168.12.0");
-  iface.addr_len = 24;
-  iface.oif = 4;
+  std::ifstream is{argv[1]};
+  json configJson;
+  is >> configJson;
 
-  auto enabledInterfaces = std::vector<EnabledInterface>{iface};
+  std::vector<EnabledInterface> enabledInterfaces;
+  for (auto enabledInterfaceJson : configJson["enabledInterfaces"]) {
+    EnabledInterface iface;
+    iface.addr = pton(enabledInterfaceJson["addr"]);
+    iface.addr_len = enabledInterfaceJson["addr_len"];
+    iface.oif = (int)enabledInterfaceJson["oif"];
+    enabledInterfaces.push_back(iface);
+  }
 
-  Entry entry0;
-  entry0.dst = pton("10.1.0.0");
-  entry0.dst_len = 24;
-  entry0.oif = 5;
+  std::vector<Entry> directRoutes;
+  for (auto directRouteJson : configJson["directRoutes"]) {
+    Entry directRoute;
+    directRoute.dst = pton(directRouteJson["dst"]);
+    directRoute.dst_len = directRouteJson["dst_len"];
+    directRoute.oif = directRouteJson["oif"];
+    directRoutes.push_back(directRoute);
+  }
 
-  auto directRoutes = std::vector<Entry>{entry0};
+  std::cerr << "enabled interfaces:" << std::endl;
+  for (auto ei : enabledInterfaces) {
+    std::cerr << to_string(ei.addr) << "/" << (int)ei.addr_len << " dev "
+              << ei.oif << std::endl;
+  }
 
   Service service{enabledInterfaces, directRoutes};
   service.join();

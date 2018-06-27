@@ -14,6 +14,7 @@
 #include <vector>
 
 using namespace std::chrono_literals;
+using namespace std::string_literals;
 
 static const int port = 1234;
 
@@ -181,8 +182,11 @@ std::vector<RtMessage> recv_rt_response(int sfd) {
         RtError *err = (RtError *)nlh;
         if (err->nle.error == 0)
           return rv;
-        else
-          throw std::runtime_error("netlink error");
+        else {
+          char buf[1024] = {};
+          char *ptr = strerror_r(-err->nle.error, buf, sizeof buf);
+          throw std::runtime_error("netlink error: "s + std::string{ptr});
+        }
       }
 
       if (nlh->nlmsg_type != RTM_NEWROUTE)
@@ -197,8 +201,9 @@ std::vector<RtMessage> recv_rt_response(int sfd) {
 }
 
 std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
-  std::cout << sizeof(RtRequest) << ":" << NLMSG_LENGTH(sizeof(RtRequest));
-  std::cout << std::endl;
+  std::cerr << "send_rt_request" << std::endl;
+  // std::cout << sizeof(RtRequest) << ":" << NLMSG_LENGTH(sizeof(RtRequest));
+  // std::cout << std::endl;
 
   //   struct RtResponseHeader {
   //   struct nlmsghdr nlh;
@@ -211,10 +216,10 @@ std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
   //   struct RtaInaddr rta_gateway;
   //   struct RtaInt rta_oif;
   // };
-  printf("nlmsghdr: %lu, rtmsg: %lu, RtaInaddr: %lu, RtaInt: %lu, "
-         "RtRequest: %lu\n",
-         sizeof(struct nlmsghdr), sizeof(struct rtmsg), sizeof(RtaInaddr),
-         sizeof(RtaInt), sizeof(RtRequest));
+  // printf("nlmsghdr: %lu, rtmsg: %lu, RtaInaddr: %lu, RtaInt: %lu, "
+  //        "RtRequest: %lu\n",
+  //        sizeof(struct nlmsghdr), sizeof(struct rtmsg), sizeof(RtaInaddr),
+  //        sizeof(RtaInt), sizeof(RtRequest));
 
   int sfd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE); // TODO: error handling
 
@@ -297,7 +302,17 @@ std::vector<RtMessage> NetlinkRouteSocket::getRoutes() {
   return send_rt_request(msg);
 }
 
+inline std::string to_string(in_addr addr) {
+  char buf[32] = {};
+  inet_ntop(AF_INET, &addr, buf, sizeof buf);
+  return std::string{buf};
+}
+
 void NetlinkRouteSocket::setRoute(Entry entry) {
+  std::cerr << "NetlinkRouteSocket::setRoute " << to_string(entry.dst)
+            << " via " << to_string(entry.gateway) << " dev " << entry.oif
+            << std::endl;
+
   RtMessage msg;
   msg.msg_type = RTM_NEWROUTE;
   msg.flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
@@ -353,6 +368,10 @@ void Service::recvLoop() {
       throw std::runtime_error("recvfrom");
     }
 
+    std::cerr << "Received entry from " << to_string(sender.sin_addr)
+              << std::endl;
+
+    entry.gateway = sender.sin_addr;
     entry.oif = findInterfaceByIp(sender.sin_addr);
 
     NetlinkRouteSocket nls;
@@ -362,10 +381,17 @@ void Service::recvLoop() {
 
 static bool isInSubnet(struct in_addr addr, struct in_addr net,
                        uint8_t net_len) {
+  std::cerr << "isInSubnet(" << to_string(addr) << ", " << to_string(net)
+            << ", " << (int)net_len << ")" << std::endl;
   uint32_t addrh = ntohl(addr.s_addr);
-  uint32_t neth = ntohl(addr.s_addr);
-  int n = (32 - net_len);
-  return (addrh >> n) == (neth >> n);
+  uint32_t neth = ntohl(net.s_addr);
+  uint32_t mask = ~((1 << (32 - net_len)) - 1);
+  std::cerr << mask << " " << addrh << " " << neth << std::endl;
+  // int n = (32 - net_len);
+  // bool rv = (addrh >> n) == (neth >> n);
+  bool rv = (addrh & mask) == (neth & mask);
+  std::cerr << "rv == " << rv << std::endl;
+  return rv;
 }
 
 int Service::findInterfaceByIp(struct in_addr addr) {
@@ -385,9 +411,11 @@ void Service::broadcastLoop() {
 }
 
 void Service::broadcastRoute(Entry entry) {
+  std::cerr << "Service::broadcastRoute" << std::endl;
+
   struct sockaddr_in addr {};
   addr.sin_family = AF_INET;
-  addr.sin_port = port;
+  addr.sin_port = htons(port);
   addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 
   if (sendto(sfd, &entry, sizeof entry, 0, (struct sockaddr *)&addr,
@@ -397,9 +425,7 @@ void Service::broadcastRoute(Entry entry) {
 
 void Service::broadcastRoutingTable() {
   std::cerr << "Broadcasting routing table..." << std::endl;
-  NetlinkRouteSocket socket;
-  auto routes = socket.getRoutes_();
-  for (auto entry : routes) {
+  for (auto entry : routingTable) {
     broadcastRoute(entry);
   }
 }
