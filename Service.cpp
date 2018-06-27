@@ -410,17 +410,26 @@ void Service::broadcastLoop() {
   }
 }
 
+static in_addr broadcastAddress(in_addr net, uint8_t net_len) {
+  uint32_t neth = ntohl(net.s_addr);
+  uint32_t mask = (1 << (32 - net_len)) - 1;
+  uint32_t rvh = neth | mask;
+  return in_addr{htonl(rvh)};
+}
+
 void Service::broadcastRoute(Entry entry) {
   std::cerr << "Service::broadcastRoute" << std::endl;
 
-  struct sockaddr_in addr {};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+  for (auto iface : enabledInterfaces) {
+    struct sockaddr_in addr {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr = broadcastAddress(iface.addr, iface.addr_len);
 
-  if (sendto(sfd, &entry, sizeof entry, 0, (struct sockaddr *)&addr,
-             sizeof addr) < 0)
-    throw std::runtime_error("sendto");
+    if (sendto(sfd, &entry, sizeof entry, 0, (struct sockaddr *)&addr,
+               sizeof addr) < 0)
+      throw std::runtime_error("sendto");
+  }
 }
 
 void Service::broadcastRoutingTable() {
