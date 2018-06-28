@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <thread>
@@ -368,14 +369,23 @@ void Service::recvLoop() {
       throw std::runtime_error("recvfrom");
     }
 
-    std::cerr << "Received entry from " << to_string(sender.sin_addr)
-              << std::endl;
-
     entry.gateway = sender.sin_addr;
     entry.oif = findInterfaceByIp(sender.sin_addr);
+    entry.metric++;
 
-    NetlinkRouteSocket nls;
-    nls.setRoute(entry);
+    std::cerr << "Received entry: " << to_string(entry.dst) << "/"
+              << (int)entry.dst_len << " via " << to_string(entry.gateway)
+              << std::endl;
+
+    int oldMetric = findMetricByDst(entry.dst);
+
+    std::cerr << "old metric: " << oldMetric << " new metric: " << entry.metric
+              << std::endl;
+
+    if (entry.metric < oldMetric) {
+      NetlinkRouteSocket nls;
+      nls.setRoute(entry);
+    }
   }
 }
 
@@ -442,4 +452,12 @@ void Service::broadcastRoutingTable() {
 void Service::join() {
   recvThread.join();
   broadcastThread.join();
+}
+
+int Service::findMetricByDst(in_addr dst) {
+  for (auto entry : routingTable) {
+    if (entry.dst == dst)
+      return entry.metric;
+  }
+  return std::numeric_limits<int>::max();
 }

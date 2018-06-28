@@ -49,6 +49,7 @@ private:
   void broadcastRoutingTable();
   void recvLoop();
   void broadcastLoop();
+  int findMetricByDst(in_addr dst);
 
   std::thread recvThread;
   std::thread broadcastThread;

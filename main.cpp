@@ -156,7 +156,7 @@ int main(int argc, char const *argv[]) {
 
   std::vector<Entry> directRoutes;
   for (auto directRouteJson : configJson["directRoutes"]) {
-    Entry directRoute;
+    Entry directRoute{};
     directRoute.dst = pton(directRouteJson["dst"]);
     directRoute.dst_len = directRouteJson["dst_len"];
     directRoute.oif = directRouteJson["oif"];
