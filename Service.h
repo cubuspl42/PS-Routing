@@ -1,8 +1,9 @@
 #pragma once
 #include <netinet/ip.h>
 
-#include <vector>
+#include <mutex>
 #include <thread>
+#include <vector>
 
 struct EnabledInterface {
   in_addr addr;
@@ -50,6 +51,9 @@ private:
   void recvLoop();
   void broadcastLoop();
   int findMetricByDst(in_addr dst);
+  void handleReceivedEntry(Entry entry);
+
+  std::mutex mutex;
 
   std::thread recvThread;
   std::thread broadcastThread;

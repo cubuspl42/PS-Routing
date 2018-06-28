@@ -273,11 +273,11 @@ std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
 std::vector<Entry> NetlinkRouteSocket::getRoutes_() {
   int sfd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 
-  struct sockaddr_nl snl {};
+  sockaddr_nl snl{};
   snl.nl_family = AF_NETLINK;
   snl.nl_pid = 0;
 
-  struct Message msg {};
+  Message msg{};
   msg.header.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   msg.header.nlmsg_type = RTM_GETROUTE;
   msg.header.nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
@@ -373,19 +373,24 @@ void Service::recvLoop() {
     entry.oif = findInterfaceByIp(sender.sin_addr);
     entry.metric++;
 
-    std::cerr << "Received entry: " << to_string(entry.dst) << "/"
-              << (int)entry.dst_len << " via " << to_string(entry.gateway)
-              << std::endl;
+    handleReceivedEntry(entry);
+  }
+}
 
-    int oldMetric = findMetricByDst(entry.dst);
+void Service::handleReceivedEntry(Entry entry) {
+  std::lock_guard<std::mutex> lock{mutex};
+  std::cerr << "Received entry: " << to_string(entry.dst) << "/"
+            << (int)entry.dst_len << " via " << to_string(entry.gateway)
+            << std::endl;
 
-    std::cerr << "old metric: " << oldMetric << " new metric: " << entry.metric
-              << std::endl;
+  int oldMetric = findMetricByDst(entry.dst);
 
-    if (entry.metric < oldMetric) {
-      NetlinkRouteSocket nls;
-      nls.setRoute(entry);
-    }
+  std::cerr << "old metric: " << oldMetric << " new metric: " << entry.metric
+            << std::endl;
+
+  if (entry.metric < oldMetric) {
+    NetlinkRouteSocket nls;
+    nls.setRoute(entry);
   }
 }
 
@@ -443,6 +448,7 @@ void Service::broadcastRoute(Entry entry) {
 }
 
 void Service::broadcastRoutingTable() {
+  std::lock_guard<std::mutex> lock{mutex};
   std::cerr << "Broadcasting routing table..." << std::endl;
   for (auto entry : routingTable) {
     broadcastRoute(entry);
