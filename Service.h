@@ -1,4 +1,6 @@
 #pragma once
+#include "Entry.h"
+
 #include <netinet/ip.h>
 
 #include <mutex>
@@ -9,33 +11,6 @@ struct EnabledInterface {
   in_addr addr;
   uint8_t addr_len;
   int oif;
-};
-
-struct Entry {
-  in_addr dst;
-  uint8_t dst_len;
-  in_addr gateway;
-  int oif;
-  int metric;
-};
-
-struct RtMessage {
-  uint16_t msg_type;
-  uint16_t flags;
-  in_addr dst;
-  uint8_t dst_len;
-  in_addr gateway;
-  int oif;
-  uint8_t protocol;
-  uint8_t scope;
-  uint8_t type;
-};
-
-class NetlinkRouteSocket {
-public:
-  std::vector<RtMessage> getRoutes();
-  std::vector<Entry> getRoutes_();
-  void setRoute(Entry entry);
 };
 
 class Service {
