@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -316,7 +317,7 @@ void NetlinkRouteSocket::setRoute(Entry entry) {
 
   RtMessage msg;
   msg.msg_type = RTM_NEWROUTE;
-  msg.flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
+  msg.flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_ACK;
   msg.dst = entry.dst;
   msg.dst_len = entry.dst_len;
   msg.gateway = entry.gateway;
@@ -389,6 +390,7 @@ void Service::handleReceivedEntry(Entry entry) {
             << std::endl;
 
   if (entry.metric < oldMetric) {
+    replaceEntry(entry.dst, entry);
     NetlinkRouteSocket nls;
     nls.setRoute(entry);
   }
@@ -466,4 +468,13 @@ int Service::findMetricByDst(in_addr dst) {
       return entry.metric;
   }
   return std::numeric_limits<int>::max();
+}
+
+void Service::replaceEntry(in_addr dst, Entry newEntry) {
+  auto &r = routingTable;
+  auto it =
+      std::find_if(r.begin(), r.end(), [=](Entry e) { return e.dst == dst; });
+  if (it != r.end())
+    it = r.erase(it);
+  r.insert(it, newEntry);
 }

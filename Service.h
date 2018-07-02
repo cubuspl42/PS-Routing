@@ -52,6 +52,7 @@ private:
   void broadcastLoop();
   int findMetricByDst(in_addr dst);
   void handleReceivedEntry(Entry entry);
+  void replaceEntry(in_addr dst, Entry newEntry);
 
   std::mutex mutex;
 
