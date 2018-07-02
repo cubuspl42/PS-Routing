@@ -51,7 +51,7 @@ struct RtRequest {
   struct RtaInt rta_oif;
 };
 
-RtMessage repack_rt_message(const RtResponseHeader &rth) {
+static RtMessage repack_rt_message(const RtResponseHeader &rth) {
   const struct rtmsg &rtm = rth.rtm;
 
   RtMessage msg;
@@ -60,7 +60,6 @@ RtMessage repack_rt_message(const RtResponseHeader &rth) {
   int len = RTM_PAYLOAD(&rth.nlh);
   for (rtattr *rta = (rtattr *)RTM_RTA(&rtm); RTA_OK(rta, len);
        rta = RTA_NEXT(rta, len)) {
-    std::cerr << "rta_type: " << rta->rta_type << std::endl;
     switch (rta->rta_type) {
     case RTA_DST:
       msg.dst = ((RtaInaddr *)rta)->ina;
@@ -77,35 +76,15 @@ RtMessage repack_rt_message(const RtResponseHeader &rth) {
   return msg;
 }
 
-std::vector<RtMessage> recv_rt_response(int sfd) {
+static std::vector<RtMessage> recv_rt_response(int sfd) {
   std::vector<RtMessage> rv;
-
-  std::cout << "recv_rt_response" << std::endl;
 
   while (true) {
     char buf[8192] = {};
     int len = recv(sfd, buf, sizeof buf, 0);
-    std::cout << "len: " << len << std::endl;
 
     for (nlmsghdr *nlh = (nlmsghdr *)buf; NLMSG_OK(nlh, len);
          nlh = NLMSG_NEXT(nlh, len)) {
-
-      std::cout << "nlmsg_type: " << nlh->nlmsg_type << " ";
-      switch (nlh->nlmsg_type) {
-      case NLMSG_DONE:
-        std::cout << "NLMSG_DONE";
-        break;
-      case RTM_NEWROUTE:
-        std::cout << "RTM_NEWROUTE";
-        break;
-      case NLMSG_ERROR:
-        std::cout << "NLMSG_ERROR";
-        break;
-      default:
-        std::cout << "<other>";
-        break;
-      }
-      std::cout << std::endl;
 
       if (nlh->nlmsg_type == NLMSG_DONE)
         return rv;
@@ -132,9 +111,7 @@ std::vector<RtMessage> recv_rt_response(int sfd) {
   return rv;
 }
 
-std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
-  std::cerr << "send_rt_request" << std::endl;
-
+static std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
   int sfd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE); // TODO: error handling
 
   RtRequest req{};
@@ -190,9 +167,8 @@ std::vector<RtMessage> NetlinkRouteSocket::getRoutes() {
 }
 
 void NetlinkRouteSocket::setRoute(Entry entry) {
-  std::cerr << "NetlinkRouteSocket::setRoute " << to_string(entry.dst)
-            << " via " << to_string(entry.gateway) << " dev " << entry.oif
-            << std::endl;
+  std::cerr << "Setting route: " << to_string(entry.dst) << " via "
+            << to_string(entry.gateway) << " dev " << entry.oif << std::endl;
 
   RtMessage msg;
   msg.msg_type = RTM_NEWROUTE;

@@ -73,14 +73,14 @@ void Service::recvLoop() {
 
 void Service::handleReceivedEntry(Entry entry) {
   std::lock_guard<std::mutex> lock{mutex};
+
   std::cerr << "Received entry: " << to_string(entry.dst) << "/"
-            << (int)entry.dst_len << " via " << to_string(entry.gateway)
-            << std::endl;
+            << (int)entry.dst_len << " via " << to_string(entry.gateway);
 
   int oldMetric = findMetricByDst(entry.dst);
 
-  std::cerr << "old metric: " << oldMetric << " new metric: " << entry.metric
-            << std::endl;
+  std::cerr << " [old metric: " << oldMetric << " new metric: " << entry.metric
+            << "]" << std::endl;
 
   if (entry.metric < oldMetric) {
     replaceEntry(entry.dst, entry);
@@ -91,16 +91,10 @@ void Service::handleReceivedEntry(Entry entry) {
 
 static bool isInSubnet(struct in_addr addr, struct in_addr net,
                        uint8_t net_len) {
-  std::cerr << "isInSubnet(" << to_string(addr) << ", " << to_string(net)
-            << ", " << (int)net_len << ")" << std::endl;
   uint32_t addrh = ntohl(addr.s_addr);
   uint32_t neth = ntohl(net.s_addr);
   uint32_t mask = ~((1 << (32 - net_len)) - 1);
-  std::cerr << mask << " " << addrh << " " << neth << std::endl;
-  // int n = (32 - net_len);
-  // bool rv = (addrh >> n) == (neth >> n);
   bool rv = (addrh & mask) == (neth & mask);
-  std::cerr << "rv == " << rv << std::endl;
   return rv;
 }
 
@@ -128,7 +122,7 @@ static in_addr broadcastAddress(in_addr net, uint8_t net_len) {
 }
 
 void Service::broadcastRoute(Entry entry) {
-  std::cerr << "Service::broadcastRoute" << std::endl;
+  std::cerr << "Broadcasting route..." << std::endl;
 
   for (auto iface : enabledInterfaces) {
     struct sockaddr_in addr {};
