@@ -10,6 +10,7 @@ struct RtMessage {
   uint8_t dst_len;
   in_addr gateway;
   int oif;
+  int metric;
   uint8_t protocol;
   uint8_t scope;
   uint8_t type;

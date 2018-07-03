@@ -48,6 +48,7 @@ struct RtRequest {
   struct rtmsg rtm;
   struct RtaInaddr rta_dst;
   struct RtaInaddr rta_gateway;
+  struct RtaInt rta_metric;
   struct RtaInt rta_oif;
 };
 
@@ -69,6 +70,9 @@ static RtMessage repack_rt_message(const RtResponseHeader &rth) {
       break;
     case RTA_OIF:
       msg.oif = ((RtaInt *)rta)->i;
+      break;
+    case RTA_METRICS:
+      msg.metric = ((RtaInt *)rta)->i;
       break;
     }
   }
@@ -143,6 +147,10 @@ static std::vector<RtMessage> send_rt_request(const RtMessage &msg) {
   req.rta_oif.rta.rta_len = sizeof req.rta_oif;
   req.rta_oif.i = msg.oif;
 
+  req.rta_metric.rta.rta_type = RTA_METRICS;
+  req.rta_metric.rta.rta_len = sizeof req.rta_metric;
+  req.rta_metric.i = msg.metric;
+
   struct sockaddr_nl snl {};
   snl.nl_family = AF_NETLINK;
   snl.nl_pid = 0;
@@ -168,7 +176,8 @@ std::vector<RtMessage> NetlinkRouteSocket::getRoutes() {
 
 void NetlinkRouteSocket::setRoute(Entry entry) {
   std::cerr << "Setting route: " << to_string(entry.dst) << " via "
-            << to_string(entry.gateway) << " dev " << entry.oif << std::endl;
+            << to_string(entry.gateway) << " dev " << entry.oif << " metric "
+            << entry.metric << std::endl;
 
   RtMessage msg;
   msg.msg_type = RTM_NEWROUTE;
@@ -177,6 +186,7 @@ void NetlinkRouteSocket::setRoute(Entry entry) {
   msg.dst_len = entry.dst_len;
   msg.gateway = entry.gateway;
   msg.oif = entry.oif;
+  msg.metric = entry.metric;
   msg.protocol = RTPROT_STATIC;
   msg.scope = RT_SCOPE_UNIVERSE;
   msg.type = RTN_UNICAST;
